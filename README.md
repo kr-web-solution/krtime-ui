@@ -1,9 +1,9 @@
 # KRTime Admin
 
-Next.js 15 static-export admin console for KRTime.
+Next.js 15 admin console for KRTime (no nginx).
 
 - **Stack**: TypeScript, Tailwind, TanStack Query, Leaflet, Recharts, React Hook Form + Zod
-- **Output**: static files in `out/` (nginx in Docker)
+- **Docker**: Next.js standalone on port **3000**
 
 ## Environment
 
@@ -43,8 +43,8 @@ Default admin: `admin@example.com` / `ChangeMeNow!Admin1`
 | Command | Purpose |
 | --- | --- |
 | `npm run dev` | Dev server (Turbopack) |
-| `npm run build` | Production static export → `out/` |
-| `npm run start` | Serve built app (non-export mode) |
+| `npm run build` | Production build (standalone) |
+| `npm run start` | Serve built app on port 3000 |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 
@@ -68,15 +68,6 @@ Default admin: `admin@example.com` / `ChangeMeNow!Admin1`
 | `/security` | Security events (e.g. geofence exit) |
 | `/settings` | Org settings |
 
-## Static export
-
-```bash
-npm run build
-# output: krtime-ui/out/
-```
-
-Production `next.config` enables `output: "export"`.
-
 ## Docker / Dokploy
 
 ```bash
@@ -90,7 +81,7 @@ docker build \
 | --- | --- |
 | Dockerfile | `krtime-ui/Dockerfile` |
 | Context | `krtime-ui/` |
-| Port | `3000` (nginx) |
+| Port | **`3000`** |
 | Build args | `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_APP_NAME` |
 
 Use values from `.env.production`. See [docs/DOKPLOY_DEPLOY.md](../docs/DOKPLOY_DEPLOY.md).
