@@ -2,20 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
+/* KRTime brand from logo: red #FF3131, gold #FFDE59, black, white */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: 0 0% 98%;
+  --foreground: 0 0% 7%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 7%;
+  --primary: 0 100% 59%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 48 100% 67%;
+  --secondary-foreground: 0 0% 8%;
+  --muted: 0 0% 94%;
+  --muted-foreground: 0 0% 40%;
+  --accent: 48 100% 67%;
+  --accent-foreground: 0 0% 8%;
+  --destructive: 0 84% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 88%;
+  --input: 0 0% 88%;
+  --ring: 0 100% 59%;
+  --radius: 0.75rem;
+  --brand-gold: 48 100% 67%;
+  --brand-black: 0 0% 5%;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+.dark {
+  --background: 0 0% 5%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 9%;
+  --card-foreground: 0 0% 98%;
+  --primary: 0 100% 59%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 48 90% 55%;
+  --secondary-foreground: 0 0% 8%;
+  --muted: 0 0% 14%;
+  --muted-foreground: 0 0% 68%;
+  --accent: 48 100% 67%;
+  --accent-foreground: 0 0% 8%;
+  --destructive: 0 70% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 18%;
+  --input: 0 0% 18%;
+  --ring: 48 100% 67%;
+  --brand-gold: 48 100% 67%;
+  --brand-black: 0 0% 5%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+.bg-app-gradient {
+  background:
+    radial-gradient(1100px 480px at 8% -12%, hsl(0 100% 59% / 0.16), transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, hsl(48 100% 67% / 0.14), transparent 52%),
+    radial-gradient(700px 360px at 50% 110%, hsl(0 0% 0% / 0.06), transparent 50%),
+    hsl(var(--background));
+}
+
+.font-display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.02em;
+  font-weight: 700;
 }

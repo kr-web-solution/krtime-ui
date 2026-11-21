@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KRTime Admin
 
-## Getting Started
+Next.js 15 static-export admin console for KRTime.
 
-First, run the development server:
+- **Stack**: TypeScript, Tailwind, TanStack Query, Leaflet, Recharts, React Hook Form + Zod
+- **Output**: static files in `out/` (nginx in Docker)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Environment
+
+| File | Use |
+| --- | --- |
+| `.env` | Local development |
+| `.env.production` | Production / Dokploy build args |
+| `.env.example` | Template (safe to commit) |
+
+`NEXT_PUBLIC_*` values are baked in at **build** time.
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8010
+NEXT_PUBLIC_APP_NAME=KRTime
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+```bash
+cp .env.example .env
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+API must already be running (default http://localhost:8010).
 
-## Learn More
+```bash
+cd krtime-ui
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open http://localhost:3000 (or the port Next prints).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Default admin: `admin@example.com` / `ChangeMeNow!Admin1`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Scripts
 
-## Deploy on Vercel
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Dev server (Turbopack) |
+| `npm run build` | Production static export → `out/` |
+| `npm run start` | Serve built app (non-export mode) |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Screens
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Route | Purpose |
+| --- | --- |
+| `/login` | Admin sign-in |
+| `/dashboard` | KPIs + present-by-site |
+| `/daily-attendance` | Day board |
+| `/locations` | Sites, map pin, geofence radius |
+| `/qr/[site_slug]` | Full-screen QR tablet page |
+| `/employees` | Create, site/shift, enroll codes |
+| `/devices` | List / approve devices |
+| `/shifts` | Shift definitions |
+| `/leave` | Leave requests |
+| `/holidays` | Holiday calendar |
+| `/corrections` | Attendance corrections |
+| `/reviews` | Face / attendance reviews |
+| `/reports` | Exports & charts |
+| `/security` | Security events (e.g. geofence exit) |
+| `/settings` | Org settings |
+
+## Static export
+
+```bash
+npm run build
+# output: krtime-ui/out/
+```
+
+Production `next.config` enables `output: "export"`.
+
+## Docker / Dokploy
+
+```bash
+docker build \
+  --build-arg NEXT_PUBLIC_API_BASE_URL=https://api-attendance.krwebsolution.com \
+  --build-arg NEXT_PUBLIC_APP_NAME=KRTime \
+  -t krtime-ui .
+```
+
+| Setting | Value |
+| --- | --- |
+| Dockerfile | `krtime-ui/Dockerfile` |
+| Context | `krtime-ui/` |
+| Port | `80` (nginx) |
+| Build args | `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_APP_NAME` |
+
+Use values from `.env.production`. See [docs/DOKPLOY_DEPLOY.md](../docs/DOKPLOY_DEPLOY.md).
+
+## Notes
+
+- CORS on the API must include this UI origin (`CORS_ORIGINS`).
+- Refresh tokens use an HTTP-only cookie from the API; for local HTTP keep `REFRESH_COOKIE_SECURE=false` on the API.
+- Prefer `.env` for local; if `.env.local` also exists, Next.js gives it higher priority.
