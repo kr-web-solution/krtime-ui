@@ -1,11 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AuthGate } from "@/components/auth-gate";
 import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 
 type DailyEmployee = {
   employee_id: string;
@@ -59,10 +60,20 @@ function formatTime(iso: string | null) {
 }
 
 function DailyAttendanceBody() {
+  const qc = useQueryClient();
   const { data, isLoading, error, dataUpdatedAt } = useQuery({
     queryKey: ["daily-attendance"],
     queryFn: () => apiFetch<DailyAttendance>("/api/v1/admin/daily-attendance"),
     refetchInterval: 30_000,
+  });
+
+  const remove = useMutation({
+    mutationFn: (recordId: string) =>
+      apiFetch(`/api/v1/admin/daily-attendance/${recordId}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["daily-attendance"] });
+      await qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 
   if (isLoading) {
@@ -87,6 +98,14 @@ function DailyAttendanceBody() {
           </p>
         </div>
       </div>
+
+      {remove.isError ? (
+        <p className="text-sm text-destructive" role="alert">
+          {remove.error instanceof ApiError
+            ? remove.error.message
+            : "Could not delete attendance record."}
+        </p>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -166,7 +185,7 @@ function DailyAttendanceBody() {
               </div>
             </CardHeader>
             <CardContent className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[840px] text-left text-sm">
                 <thead className="text-muted-foreground">
                   <tr className="border-b border-border">
                     <th className="py-2 pr-3 font-medium">Employee</th>
@@ -174,7 +193,8 @@ function DailyAttendanceBody() {
                     <th className="py-2 pr-3 font-medium">Check-out</th>
                     <th className="py-2 pr-3 font-medium">Current location</th>
                     <th className="py-2 pr-3 font-medium">Distance</th>
-                    <th className="py-2 font-medium">Last GPS</th>
+                    <th className="py-2 pr-3 font-medium">Last GPS</th>
+                    <th className="py-2 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -217,6 +237,25 @@ function DailyAttendanceBody() {
                           ) : (
                             "—"
                           )}
+                        </td>
+                        <td className="py-2.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={remove.isPending}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Delete attendance for ${emp.full_name}? They can check in again today.`,
+                                )
+                              ) {
+                                remove.mutate(emp.record_id);
+                              }
+                            }}
+                          >
+                            Delete
+                          </Button>
                         </td>
                       </tr>
                     );

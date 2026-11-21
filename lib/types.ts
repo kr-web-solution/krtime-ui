@@ -12,6 +12,7 @@ export type TokenPair = {
   user_id: string;
   employee_id: string | null;
   full_name: string;
+  refresh_token?: string | null;
 };
 
 export type Location = {
