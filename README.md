@@ -90,7 +90,7 @@ docker build \
 | --- | --- |
 | Dockerfile | `krtime-ui/Dockerfile` |
 | Context | `krtime-ui/` |
-| Port | `80` (nginx) |
+| Port | `3000` (nginx) |
 | Build args | `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_APP_NAME` |
 
 Use values from `.env.production`. See [docs/DOKPLOY_DEPLOY.md](../docs/DOKPLOY_DEPLOY.md).

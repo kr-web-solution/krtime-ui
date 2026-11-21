@@ -15,6 +15,7 @@ RUN npm run build
 FROM nginx:1.27-alpine
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/out /usr/share/nginx/html
-EXPOSE 80
+# Dokploy domain Port must be 3000 (matches this listen port).
+EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --retries=5 \
-  CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1
+  CMD wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1
