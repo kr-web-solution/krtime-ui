@@ -73,9 +73,13 @@ function LeaveBody() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => decide.mutate({ id: r.id, approve: false })}
+                    onClick={() => {
+                      if (window.confirm("Delete (reject) this leave request?")) {
+                        decide.mutate({ id: r.id, approve: false });
+                      }
+                    }}
                   >
-                    Reject
+                    Delete
                   </Button>
                 </div>
               </div>

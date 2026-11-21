@@ -99,9 +99,18 @@ function EmployeesBody() {
         body: { is_active: false },
       }),
     onSuccess: async () => {
-      setFlash("Employee deactivated.");
+      setFlash("Employee deleted (deactivated).");
       await qc.invalidateQueries({ queryKey: ["employees"] });
     },
+    onError: (err) => setFlash(err instanceof ApiError ? err.message : "Delete failed"),
+  });
+
+  const deleteFaceMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/api/v1/biometrics/employees/${id}`, { method: "DELETE" }),
+    onSuccess: () => setFlash("Face enrollment deleted."),
+    onError: (err) =>
+      setFlash(err instanceof ApiError ? err.message : "Face delete failed"),
   });
 
   const codeMutation = useMutation({
@@ -234,14 +243,39 @@ function EmployeesBody() {
                         >
                           Enrollment code
                         </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={deleteFaceMutation.isPending}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Delete face template for ${e.full_name}?`,
+                              )
+                            ) {
+                              deleteFaceMutation.mutate(e.id);
+                            }
+                          }}
+                        >
+                          Delete face
+                        </Button>
                         {e.is_active ? (
                           <Button
                             type="button"
                             size="sm"
                             variant="ghost"
-                            onClick={() => deactivateMutation.mutate(e.id)}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Delete employee ${e.full_name}? They will be deactivated.`,
+                                )
+                              ) {
+                                deactivateMutation.mutate(e.id);
+                              }
+                            }}
                           >
-                            Deactivate
+                            Delete
                           </Button>
                         ) : null}
                       </div>

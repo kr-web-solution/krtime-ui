@@ -6,8 +6,9 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import type { Device, Employee } from "@/lib/types";
+import { useState } from "react";
 
 function statusVariant(status: string) {
   if (status === "active") return "success" as const;
@@ -17,6 +18,7 @@ function statusVariant(status: string) {
 
 function DevicesBody() {
   const qc = useQueryClient();
+  const [flash, setFlash] = useState<string | null>(null);
   const { data: devices = [], isLoading } = useQuery({
     queryKey: ["devices"],
     queryFn: () => apiFetch<Device[]>("/api/v1/devices"),
@@ -33,8 +35,20 @@ function DevicesBody() {
     mutationFn: (id: string) =>
       apiFetch<Device>(`/api/v1/devices/${id}/approve`, { method: "POST" }),
     onSuccess: async () => {
+      setFlash("Device approved.");
       await qc.invalidateQueries({ queryKey: ["devices"] });
     },
+    onError: (err) => setFlash(err instanceof ApiError ? err.message : "Approve failed"),
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<Device>(`/api/v1/devices/${id}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      setFlash("Device revoked.");
+      await qc.invalidateQueries({ queryKey: ["devices"] });
+    },
+    onError: (err) => setFlash(err instanceof ApiError ? err.message : "Revoke failed"),
   });
 
   return (
@@ -55,6 +69,8 @@ function DevicesBody() {
           ) : devices.length === 0 ? (
             <p className="text-sm text-muted-foreground">No devices registered yet.</p>
           ) : (
+            <>
+            {flash ? <p className="mb-3 text-sm text-muted-foreground">{flash}</p> : null}
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="text-muted-foreground">
                 <tr className="border-b border-border">
@@ -81,23 +97,41 @@ function DevicesBody() {
                       {new Date(d.registered_at).toLocaleString()}
                     </td>
                     <td className="py-2">
-                      {d.status === "pending" || d.status === "reset_requested" ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => approveMutation.mutate(d.id)}
-                          disabled={approveMutation.isPending}
-                        >
-                          Approve
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {d.status === "pending" || d.status === "reset_requested" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => approveMutation.mutate(d.id)}
+                            disabled={approveMutation.isPending}
+                          >
+                            Approve
+                          </Button>
+                        ) : null}
+                        {d.status !== "revoked" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={revokeMutation.isPending}
+                            onClick={() => {
+                              if (window.confirm("Revoke this device?")) {
+                                revokeMutation.mutate(d.id);
+                              }
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Revoked</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </>
           )}
         </CardContent>
       </Card>

@@ -98,8 +98,16 @@ function HolidaysBody() {
                   <span>
                     {h.holiday_date} — {h.name}
                   </span>
-                  <Button size="sm" variant="outline" onClick={() => remove.mutate(h.id)}>
-                    Remove
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (window.confirm(`Delete holiday “${h.name}”?`)) {
+                        remove.mutate(h.id);
+                      }
+                    }}
+                  >
+                    Delete
                   </Button>
                 </div>
               ))

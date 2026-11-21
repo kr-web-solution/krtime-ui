@@ -137,6 +137,19 @@ function LocationsBody() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/api/v1/locations/${id}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      setMessage("Location deleted.");
+      newLocation();
+      await qc.invalidateQueries({ queryKey: ["locations"] });
+    },
+    onError: (err) => {
+      setMessage(err instanceof ApiError ? err.message : "Delete failed");
+    },
+  });
+
   const values = form.watch();
 
   return (
@@ -245,6 +258,24 @@ function LocationsBody() {
                     onClick={() => qrMutation.mutate(selected.slug)}
                   >
                     Generate QR display link
+                  </Button>
+                ) : null}
+                {selected?.active ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Delete location “${selected.name}”? It will be deactivated.`,
+                        )
+                      ) {
+                        deleteMutation.mutate(selected.id);
+                      }
+                    }}
+                  >
+                    Delete
                   </Button>
                 ) : null}
               </div>

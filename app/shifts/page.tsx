@@ -60,6 +60,15 @@ function ShiftsBody() {
     onError: (err) => setFlash(err instanceof ApiError ? err.message : "Create failed"),
   });
 
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/v1/shifts/${id}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      setFlash("Shift deleted.");
+      await qc.invalidateQueries({ queryKey: ["shifts"] });
+    },
+    onError: (err) => setFlash(err instanceof ApiError ? err.message : "Delete failed"),
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -112,7 +121,7 @@ function ShiftsBody() {
               shifts.map((s) => (
                 <div
                   key={s.id}
-                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
                 >
                   <div>
                     <p className="font-medium">{s.name}</p>
@@ -120,6 +129,18 @@ function ShiftsBody() {
                       {s.code ?? "—"} · {s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)}
                     </p>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={removeMutation.isPending}
+                    onClick={() => {
+                      if (window.confirm(`Delete shift “${s.name}”?`)) {
+                        removeMutation.mutate(s.id);
+                      }
+                    }}
+                  >
+                    Delete
+                  </Button>
                 </div>
               ))
             )}
