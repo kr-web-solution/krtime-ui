@@ -37,7 +37,8 @@ type AlertType =
   | "check_out"
   | "return_site"
   | "call_admin"
-  | "urgent";
+  | "urgent"
+  | "custom";
 
 const ALERT_BUTTONS: { type: AlertType; label: string }[] = [
   { type: "check_in", label: "Check in" },
@@ -142,22 +143,56 @@ function EmployeesBody() {
   });
 
   const alertMutation = useMutation({
-    mutationFn: ({ id, alertType }: { id: string; alertType: AlertType }) =>
+    mutationFn: ({
+      id,
+      alertType,
+      title,
+      message,
+    }: {
+      id: string;
+      alertType: AlertType;
+      title?: string;
+      message?: string;
+    }) =>
       apiFetch<{ title: string; delivered: number }>(
         `/api/v1/employees/${id}/alerts`,
         {
           method: "POST",
-          body: { alert_type: alertType },
+          body: {
+            alert_type: alertType,
+            ...(title ? { title } : {}),
+            ...(message ? { message } : {}),
+          },
         },
       ),
     onMutate: ({ id }) => setAlertTarget(id),
     onSuccess: (res) => {
-      setFlash(`Alert sent: ${res.title} (${res.delivered} device${res.delivered === 1 ? "" : "s"}).`);
+      setFlash(
+        `Notification sent: ${res.title} (${res.delivered} device${res.delivered === 1 ? "" : "s"}).`,
+      );
     },
     onError: (err) =>
-      setFlash(err instanceof ApiError ? err.message : "Alert failed"),
+      setFlash(err instanceof ApiError ? err.message : "Notification failed"),
     onSettled: () => setAlertTarget(null),
   });
+
+  function sendCustomMessage(employeeId: string, employeeName: string) {
+    const title =
+      window.prompt(`Notification title for ${employeeName}`, "Message from admin") ??
+      "";
+    if (!title.trim()) return;
+    const message = window.prompt("Notification message", "") ?? "";
+    if (!message.trim()) {
+      setFlash("Message is required for a normal notification.");
+      return;
+    }
+    alertMutation.mutate({
+      id: employeeId,
+      alertType: "custom",
+      title: title.trim(),
+      message: message.trim(),
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -270,6 +305,18 @@ function EmployeesBody() {
                     </td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            !e.is_active ||
+                            (alertMutation.isPending && alertTarget === e.id)
+                          }
+                          onClick={() => sendCustomMessage(e.id, e.full_name)}
+                        >
+                          Message
+                        </Button>
                         {ALERT_BUTTONS.map((alert) => (
                           <Button
                             key={alert.type}
