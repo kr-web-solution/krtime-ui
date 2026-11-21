@@ -32,10 +32,26 @@ type CreateResponse = {
   enrollment_code: EnrollmentCode | null;
 };
 
+type AlertType =
+  | "check_in"
+  | "check_out"
+  | "return_site"
+  | "call_admin"
+  | "urgent";
+
+const ALERT_BUTTONS: { type: AlertType; label: string }[] = [
+  { type: "check_in", label: "Check in" },
+  { type: "check_out", label: "Check out" },
+  { type: "return_site", label: "Return site" },
+  { type: "call_admin", label: "Call admin" },
+  { type: "urgent", label: "Urgent" },
+];
+
 function EmployeesBody() {
   const qc = useQueryClient();
   const [flash, setFlash] = useState<string | null>(null);
   const [lastCode, setLastCode] = useState<string | null>(null);
+  const [alertTarget, setAlertTarget] = useState<string | null>(null);
 
   const { data: employees = [] } = useQuery({
     queryKey: ["employees"],
@@ -125,6 +141,24 @@ function EmployeesBody() {
     },
   });
 
+  const alertMutation = useMutation({
+    mutationFn: ({ id, alertType }: { id: string; alertType: AlertType }) =>
+      apiFetch<{ title: string; delivered: number }>(
+        `/api/v1/employees/${id}/alerts`,
+        {
+          method: "POST",
+          body: { alert_type: alertType },
+        },
+      ),
+    onMutate: ({ id }) => setAlertTarget(id),
+    onSuccess: (res) => {
+      setFlash(`Alert sent: ${res.title} (${res.delivered} device${res.delivered === 1 ? "" : "s"}).`);
+    },
+    onError: (err) =>
+      setFlash(err instanceof ApiError ? err.message : "Alert failed"),
+    onSettled: () => setAlertTarget(null),
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -212,13 +246,14 @@ function EmployeesBody() {
             <CardTitle className="text-base">Directory</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="text-muted-foreground">
                 <tr className="border-b border-border">
                   <th className="py-2 pr-3 font-medium">Code</th>
                   <th className="py-2 pr-3 font-medium">Name</th>
                   <th className="py-2 pr-3 font-medium">Email</th>
                   <th className="py-2 pr-3 font-medium">Status</th>
+                  <th className="py-2 pr-3 font-medium">Alerts</th>
                   <th className="py-2 font-medium">Actions</th>
                 </tr>
               </thead>
@@ -232,6 +267,30 @@ function EmployeesBody() {
                       <Badge variant={e.is_active ? "success" : "secondary"}>
                         {e.is_active ? "Active" : "Inactive"}
                       </Badge>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {ALERT_BUTTONS.map((alert) => (
+                          <Button
+                            key={alert.type}
+                            type="button"
+                            size="sm"
+                            variant={alert.type === "urgent" ? "danger" : "secondary"}
+                            disabled={
+                              !e.is_active ||
+                              (alertMutation.isPending && alertTarget === e.id)
+                            }
+                            onClick={() =>
+                              alertMutation.mutate({
+                                id: e.id,
+                                alertType: alert.type,
+                              })
+                            }
+                          >
+                            {alert.label}
+                          </Button>
+                        ))}
+                      </div>
                     </td>
                     <td className="py-2">
                       <div className="flex flex-wrap gap-2">
