@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bar,
@@ -13,7 +14,10 @@ import {
 import { AuthGate } from "@/components/auth-gate";
 import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { apiFetch } from "@/lib/api";
+import { friendlyError } from "@/lib/friendly-error";
 import type { Dashboard } from "@/lib/types";
 
 function Kpi({ label, value }: { label: string; value: number }) {
@@ -29,19 +33,51 @@ function Kpi({ label, value }: { label: string; value: number }) {
   );
 }
 
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <div className="h-8 w-40 animate-pulse rounded bg-muted" />
+        <div className="h-4 w-56 animate-pulse rounded bg-muted" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Card key={i}>
+            <CardContent className="pt-6">
+              <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+              <div className="mt-3 h-8 w-16 animate-pulse rounded bg-muted" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <Card>
+        <CardContent className="h-72 pt-6">
+          <div className="h-full animate-pulse rounded-lg bg-muted" />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function DashboardBody() {
-  const { data, isLoading, error } = useQuery({
+  const dashQuery = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => apiFetch<Dashboard>("/api/v1/admin/dashboard"),
     refetchInterval: 30_000,
   });
+  const data = dashQuery.data;
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading dashboard…</p>;
-  if (error || !data) {
+  if (dashQuery.isLoading) return <DashboardSkeleton />;
+  if (dashQuery.isError || !data) {
     return (
-      <p className="text-sm text-destructive" role="alert">
-        Could not load dashboard.
-      </p>
+      <div className="space-y-3">
+        <Notice tone="error">
+          {friendlyError(dashQuery.error, "Could not load the dashboard.")}
+        </Notice>
+        <Button type="button" variant="outline" size="sm" onClick={() => dashQuery.refetch()}>
+          Retry
+        </Button>
+      </div>
     );
   }
 
@@ -65,13 +101,13 @@ function DashboardBody() {
         <Kpi label="Geofence exits today" value={data.geofence_exits_today} />
       </div>
       {data.geofence_exits_today > 0 ? (
-        <p className="text-sm text-amber-700 dark:text-amber-300">
-          {data.geofence_exits_today} geofence exit alert(s) today — see{" "}
-          <a href="/security/" className="underline underline-offset-2">
+        <Notice tone="info">
+          {data.geofence_exits_today} geofence exit alert{data.geofence_exits_today === 1 ? "" : "s"} today — see{" "}
+          <Link href="/security/" className="font-medium underline underline-offset-2">
             Security
-          </a>
+          </Link>
           .
-        </p>
+        </Notice>
       ) : null}
       <Card>
         <CardHeader>
@@ -87,16 +123,21 @@ function DashboardBody() {
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                 <YAxis allowDecimals={false} />
                 <Tooltip />
-                <Bar dataKey="present" fill="hsl(173 80% 28%)" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="present" fill="hsl(0 84% 42%)" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
       {data.devices_needing_attention > 0 ? (
-        <p className="text-sm text-amber-700 dark:text-amber-300">
-          {data.devices_needing_attention} device(s) need attention (pending or reset).
-        </p>
+        <Notice tone="info">
+          {data.devices_needing_attention} device
+          {data.devices_needing_attention === 1 ? "" : "s"} need attention.{" "}
+          <Link href="/devices/" className="font-medium underline underline-offset-2">
+            Open devices
+          </Link>
+          .
+        </Notice>
       ) : null}
     </div>
   );

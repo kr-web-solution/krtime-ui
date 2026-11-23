@@ -11,10 +11,15 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Notice } from "@/components/ui/notice";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError, apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
+import { friendlyError } from "@/lib/friendly-error";
+import { cn } from "@/lib/utils";
 import type { Location, QrDisplayLink } from "@/lib/types";
 
 const MapPicker = dynamic(
@@ -24,30 +29,33 @@ const MapPicker = dynamic(
 );
 
 const schema = z.object({
-  name: z.string().min(2).max(120),
+  name: z.string().min(2, "Enter a site name").max(120, "Name is too long"),
   slug: z
     .string()
-    .min(2)
-    .max(80)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase kebab-case"),
-  lat: z.coerce.number().min(-90).max(90),
-  lng: z.coerce.number().min(-180).max(180),
-  radius_m: z.coerce.number().min(5).max(500),
-  notes: z.string().max(2000).optional(),
+    .min(2, "Enter a short site code")
+    .max(80, "Site code is too long")
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase words separated by hyphens"),
+  lat: z.coerce.number().min(-90, "Latitude is out of range").max(90, "Latitude is out of range"),
+  lng: z.coerce.number().min(-180, "Longitude is out of range").max(180, "Longitude is out of range"),
+  radius_m: z.coerce.number().min(5, "Radius must be at least 5 metres").max(500, "Radius is too large"),
+  notes: z.string().max(2000, "Notes are too long").optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
+type Flash = { tone: "success" | "error" | "info"; message: string };
 
 function LocationsBody() {
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [flash, setFlash] = useState<Flash | null>(null);
   const [qrLink, setQrLink] = useState<string | null>(null);
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
-  const { data: locations = [], isLoading } = useQuery({
+  const locationsQuery = useQuery({
     queryKey: ["locations"],
     queryFn: () => apiFetch<Location[]>("/api/v1/locations"),
   });
+  const locations = locationsQuery.data ?? [];
 
   const selected = useMemo(
     () => locations.find((l) => l.id === selectedId) ?? null,
@@ -65,6 +73,7 @@ function LocationsBody() {
       notes: "",
     },
   });
+  const errors = form.formState.errors;
 
   function loadLocation(loc: Location) {
     setSelectedId(loc.id);
@@ -116,12 +125,12 @@ function LocationsBody() {
       });
     },
     onSuccess: async (loc) => {
-      setMessage(selectedId ? "Location updated." : "Location created.");
+      setFlash({ tone: "success", message: selectedId ? "Site updated." : "Site created." });
       await qc.invalidateQueries({ queryKey: ["locations"] });
       loadLocation(loc);
     },
     onError: (err) => {
-      setMessage(err instanceof ApiError ? err.message : "Save failed");
+      setFlash({ tone: "error", message: friendlyError(err, "Could not save this site.") });
     },
   });
 
@@ -130,10 +139,10 @@ function LocationsBody() {
       apiFetch<QrDisplayLink>(`/api/v1/qr/${slug}/display-link`, { method: "POST" }),
     onSuccess: (data) => {
       setQrLink(data.display_url);
-      setMessage("QR display link generated.");
+      setFlash({ tone: "success", message: "QR display link generated." });
     },
     onError: (err) => {
-      setMessage(err instanceof ApiError ? err.message : "Could not create QR link");
+      setFlash({ tone: "error", message: friendlyError(err, "Could not create a QR link.") });
     },
   });
 
@@ -141,12 +150,13 @@ function LocationsBody() {
     mutationFn: (id: string) =>
       apiFetch(`/api/v1/locations/${id}`, { method: "DELETE" }),
     onSuccess: async () => {
-      setMessage("Location deleted.");
+      setFlash({ tone: "success", message: "Site deactivated." });
+      setConfirmDeactivate(false);
       newLocation();
       await qc.invalidateQueries({ queryKey: ["locations"] });
     },
     onError: (err) => {
-      setMessage(err instanceof ApiError ? err.message : "Delete failed");
+      setFlash({ tone: "error", message: friendlyError(err, "Could not deactivate this site.") });
     },
   });
 
@@ -166,33 +176,58 @@ function LocationsBody() {
         </Button>
       </div>
 
+      {flash ? <Notice tone={flash.tone}>{flash.message}</Notice> : null}
+
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Sites</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : locations.length === 0 ? (
+            {locationsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading sites…</p>
+            ) : locationsQuery.isError ? (
+              <div className="space-y-3">
+                <Notice tone="error">
+                  {friendlyError(locationsQuery.error, "Could not load sites.")}
+                </Notice>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => locationsQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : locationsQuery.isSuccess && locations.length === 0 ? (
               <p className="text-sm text-muted-foreground">No sites yet.</p>
             ) : (
-              locations.map((loc) => (
-                <button
-                  key={loc.id}
-                  type="button"
-                  onClick={() => loadLocation(loc)}
-                  className="flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-left text-sm hover:bg-muted"
-                >
-                  <span>
-                    <span className="block font-medium">{loc.name}</span>
-                    <span className="text-xs text-muted-foreground">{loc.slug}</span>
-                  </span>
-                  <Badge variant={loc.active ? "success" : "secondary"}>
-                    {loc.active ? "Active" : "Off"}
-                  </Badge>
-                </button>
-              ))
+              locations.map((loc) => {
+                const isSelected = selectedId === loc.id;
+                return (
+                  <button
+                    key={loc.id}
+                    type="button"
+                    onClick={() => loadLocation(loc)}
+                    aria-current={isSelected ? "true" : undefined}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm",
+                      isSelected
+                        ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                        : "border-border hover:bg-muted",
+                    )}
+                  >
+                    <span>
+                      <span className="block font-medium">{loc.name}</span>
+                      <span className="text-xs text-muted-foreground">{loc.slug}</span>
+                    </span>
+                    <Badge variant={loc.active ? "success" : "secondary"}>
+                      {loc.active ? "Active" : "Off"}
+                    </Badge>
+                  </button>
+                );
+              })
             )}
           </CardContent>
         </Card>
@@ -206,31 +241,60 @@ function LocationsBody() {
           <CardContent className="space-y-4">
             <form
               className="grid gap-4 md:grid-cols-2"
+              noValidate
               onSubmit={form.handleSubmit((v) => saveMutation.mutate(v))}
             >
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
-                <Input id="name" {...form.register("name")} />
+                <Input id="name" aria-invalid={Boolean(errors.name)} {...form.register("name")} />
+                <FieldError message={errors.name?.message} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="slug">Slug</Label>
-                <Input id="slug" disabled={!!selectedId} {...form.register("slug")} />
+                <Label htmlFor="slug">Site code</Label>
+                <Input
+                  id="slug"
+                  disabled={!!selectedId}
+                  aria-invalid={Boolean(errors.slug)}
+                  {...form.register("slug")}
+                />
+                <FieldError message={errors.slug?.message} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lat">Latitude</Label>
-                <Input id="lat" type="number" step="any" {...form.register("lat")} />
+                <Input
+                  id="lat"
+                  type="number"
+                  step="any"
+                  aria-invalid={Boolean(errors.lat)}
+                  {...form.register("lat")}
+                />
+                <FieldError message={errors.lat?.message} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lng">Longitude</Label>
-                <Input id="lng" type="number" step="any" {...form.register("lng")} />
+                <Input
+                  id="lng"
+                  type="number"
+                  step="any"
+                  aria-invalid={Boolean(errors.lng)}
+                  {...form.register("lng")}
+                />
+                <FieldError message={errors.lng?.message} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="radius_m">Radius (metres)</Label>
-                <Input id="radius_m" type="number" {...form.register("radius_m")} />
+                <Input
+                  id="radius_m"
+                  type="number"
+                  aria-invalid={Boolean(errors.radius_m)}
+                  {...form.register("radius_m")}
+                />
+                <FieldError message={errors.radius_m?.message} />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="notes">Calibration notes</Label>
                 <Textarea id="notes" {...form.register("notes")} />
+                <FieldError message={errors.notes?.message} />
               </div>
               <div className="md:col-span-2">
                 <MapPicker
@@ -265,22 +329,13 @@ function LocationsBody() {
                     type="button"
                     variant="outline"
                     disabled={deleteMutation.isPending}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Delete location “${selected.name}”? It will be deactivated.`,
-                        )
-                      ) {
-                        deleteMutation.mutate(selected.id);
-                      }
-                    }}
+                    onClick={() => setConfirmDeactivate(true)}
                   >
-                    Delete
+                    Deactivate
                   </Button>
                 ) : null}
               </div>
             </form>
-            {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
             {qrLink ? (
               <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
                 <p className="font-medium">Tablet URL</p>
@@ -297,6 +352,19 @@ function LocationsBody() {
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={confirmDeactivate}
+        title="Deactivate this site?"
+        body={`${selected?.name ?? "This site"} will stop accepting check-ins.`}
+        confirmLabel="Deactivate"
+        danger
+        pending={deleteMutation.isPending}
+        onCancel={() => setConfirmDeactivate(false)}
+        onConfirm={() => {
+          if (selected) deleteMutation.mutate(selected.id);
+        }}
+      />
     </div>
   );
 }

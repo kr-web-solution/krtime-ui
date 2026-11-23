@@ -3,8 +3,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { AuthGate } from "@/components/auth-gate";
 import { AppShell } from "@/components/layout/app-shell";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 import { apiFetch } from "@/lib/api";
+import { friendlyError } from "@/lib/friendly-error";
 import { cn } from "@/lib/utils";
 
 type SecurityEvent = {
@@ -18,17 +21,32 @@ type SecurityEvent = {
 };
 
 function eventLabel(type: string): string {
-  if (type === "geofence_exit") return "Left site while checked in";
-  if (type === "mock_location") return "Mock GPS";
-  return type.replaceAll("_", " ");
+  switch (type) {
+    case "geofence_exit":
+      return "Left site while checked in";
+    case "mock_location":
+      return "Suspicious location signal";
+    case "bad_signature":
+      return "Device integrity warning";
+    case "root_detected":
+      return "Compromised device signal";
+    default:
+      return "Security alert";
+  }
+}
+
+function severityLabel(raw: string): string {
+  const value = raw.replaceAll("_", " ");
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function SecurityBody() {
-  const { data = [], isLoading } = useQuery({
+  const eventsQuery = useQuery({
     queryKey: ["security-events"],
     queryFn: () => apiFetch<SecurityEvent[]>("/api/v1/admin/security-events?limit=100"),
     refetchInterval: 30_000,
   });
+  const data = eventsQuery.data ?? [];
 
   const exits = data.filter((e) => e.event_type === "geofence_exit");
   const activeExits = exits.filter((e) => e.details?.active === true);
@@ -38,11 +56,22 @@ function SecurityBody() {
       <div>
         <h1 className="font-display text-3xl tracking-tight">Security events</h1>
         <p className="text-sm text-muted-foreground">
-          Geofence exits while checked in, mock GPS, bad signatures, and other client signals.
+          Alerts when someone leaves the site while checked in, or when a device looks unsafe.
         </p>
       </div>
 
-      {activeExits.length > 0 ? (
+      {eventsQuery.isError ? (
+        <div className="space-y-3">
+          <Notice tone="error">
+            {friendlyError(eventsQuery.error, "Could not load security events.")}
+          </Notice>
+          <Button type="button" variant="outline" size="sm" onClick={() => eventsQuery.refetch()}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
+      {eventsQuery.isSuccess && activeExits.length > 0 ? (
         <Card className="border-amber-500/40 bg-amber-500/5">
           <CardHeader>
             <CardTitle className="text-base text-amber-800 dark:text-amber-200">
@@ -73,9 +102,11 @@ function SecurityBody() {
           <CardTitle className="text-base">Recent</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {isLoading ? (
+          {eventsQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : data.length === 0 ? (
+          ) : eventsQuery.isError ? (
+            <p className="text-sm text-muted-foreground">Events will appear here after a retry.</p>
+          ) : eventsQuery.isSuccess && data.length === 0 ? (
             <p className="text-sm text-muted-foreground">No events yet.</p>
           ) : (
             data.map((e) => {
@@ -93,8 +124,8 @@ function SecurityBody() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium">{eventLabel(e.event_type)}</span>
-                    <span className="text-xs uppercase text-muted-foreground">
-                      {e.severity}
+                    <span className="text-xs text-muted-foreground">
+                      {severityLabel(e.severity)}
                       {isExit ? (active ? " · active" : " · returned") : null}
                     </span>
                   </div>

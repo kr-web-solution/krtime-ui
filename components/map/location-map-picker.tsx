@@ -6,6 +6,7 @@ import {
   MapContainer,
   Marker,
   TileLayer,
+  useMap,
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
@@ -35,6 +36,15 @@ function ClickHandler({ onChange }: { onChange: (lat: number, lng: number) => vo
   return null;
 }
 
+function MapViewUpdater({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    map.setView([lat, lng]);
+  }, [lat, lng, map]);
+  return null;
+}
+
 export function LocationMapPicker({ lat, lng, radius_m, onChange }: Props) {
   const center = useMemo(() => ({ lat, lng }), [lat, lng]);
 
@@ -56,6 +66,7 @@ export function LocationMapPicker({ lat, lng, radius_m, onChange }: Props) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        <MapViewUpdater lat={lat} lng={lng} />
         <ClickHandler onChange={onChange} />
         <Marker
           position={[lat, lng]}
@@ -72,7 +83,12 @@ export function LocationMapPicker({ lat, lng, radius_m, onChange }: Props) {
         <Circle
           center={[lat, lng]}
           radius={radius_m}
-          pathOptions={{ color: "#0f766e", fillColor: "#14b8a6", fillOpacity: 0.2 }}
+          pathOptions={{
+            color: "hsl(0 84% 42%)",
+            fillColor: "hsl(48 100% 67%)",
+            fillOpacity: 0.28,
+            weight: 2,
+          }}
         />
       </MapContainer>
     </div>

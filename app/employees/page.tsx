@@ -10,19 +10,23 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError, apiFetch } from "@/lib/api";
+import { Notice } from "@/components/ui/notice";
+import { apiFetch } from "@/lib/api";
+import { friendlyError, humanStatus } from "@/lib/friendly-error";
 import type { Employee, EnrollmentCode, Location, Shift } from "@/lib/types";
 
 const schema = z.object({
-  email: z.string().email(),
-  full_name: z.string().min(2).max(160),
-  employee_code: z.string().min(2).max(40),
-  phone: z.string().max(32).optional(),
-  job_title: z.string().max(120).optional(),
-  primary_location_id: z.string().uuid().optional().or(z.literal("")),
-  shift_id: z.string().uuid().optional().or(z.literal("")),
+  email: z.string().email("Enter a valid email"),
+  full_name: z.string().min(2, "Enter the person’s name").max(160, "Name is too long"),
+  employee_code: z.string().min(2, "Enter a staff code").max(40, "Staff code is too long"),
+  phone: z.string().max(32, "Phone number is too long").optional(),
+  job_title: z.string().max(120, "Job title is too long").optional(),
+  primary_location_id: z.string().optional().or(z.literal("")),
+  shift_id: z.string().optional().or(z.literal("")),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -48,13 +52,21 @@ const ALERT_BUTTONS: { type: AlertType; label: string }[] = [
   { type: "urgent", label: "Urgent" },
 ];
 
+type Flash = { tone: "success" | "error" | "info"; message: string };
+
+type ConfirmKind =
+  | { kind: "urgent"; id: string; name: string }
+  | { kind: "deactivate"; id: string; name: string }
+  | { kind: "delete-face"; id: string; name: string };
+
 function EmployeesBody() {
   const qc = useQueryClient();
-  const [flash, setFlash] = useState<string | null>(null);
+  const [flash, setFlash] = useState<Flash | null>(null);
   const [lastCode, setLastCode] = useState<string | null>(null);
   const [alertTarget, setAlertTarget] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
 
-  const { data: employees = [] } = useQuery({
+  const employeesQuery = useQuery({
     queryKey: ["employees"],
     queryFn: () => apiFetch<Employee[]>("/api/v1/employees"),
   });
@@ -66,6 +78,8 @@ function EmployeesBody() {
     queryKey: ["shifts"],
     queryFn: () => apiFetch<Shift[]>("/api/v1/shifts"),
   });
+
+  const employees = employeesQuery.data ?? [];
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -79,6 +93,7 @@ function EmployeesBody() {
       shift_id: "",
     },
   });
+  const errors = form.formState.errors;
 
   const createMutation = useMutation({
     mutationFn: (values: FormValues) => {
@@ -101,12 +116,13 @@ function EmployeesBody() {
       });
     },
     onSuccess: async (res) => {
-      setFlash("Employee created.");
+      setFlash({ tone: "success", message: "Employee created." });
       setLastCode(res.enrollment_code?.code ?? null);
       form.reset();
       await qc.invalidateQueries({ queryKey: ["employees"] });
     },
-    onError: (err) => setFlash(err instanceof ApiError ? err.message : "Create failed"),
+    onError: (err) =>
+      setFlash({ tone: "error", message: friendlyError(err, "Could not create this person.") }),
   });
 
   const deactivateMutation = useMutation({
@@ -116,18 +132,23 @@ function EmployeesBody() {
         body: { is_active: false },
       }),
     onSuccess: async () => {
-      setFlash("Employee deleted (deactivated).");
+      setFlash({ tone: "success", message: "Employee deactivated." });
+      setConfirm(null);
       await qc.invalidateQueries({ queryKey: ["employees"] });
     },
-    onError: (err) => setFlash(err instanceof ApiError ? err.message : "Delete failed"),
+    onError: (err) =>
+      setFlash({ tone: "error", message: friendlyError(err, "Could not deactivate this person.") }),
   });
 
   const deleteFaceMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetch(`/api/v1/biometrics/employees/${id}`, { method: "DELETE" }),
-    onSuccess: () => setFlash("Face enrollment deleted."),
+    onSuccess: () => {
+      setFlash({ tone: "success", message: "Face enrollment removed." });
+      setConfirm(null);
+    },
     onError: (err) =>
-      setFlash(err instanceof ApiError ? err.message : "Face delete failed"),
+      setFlash({ tone: "error", message: friendlyError(err, "Could not remove face enrollment.") }),
   });
 
   const codeMutation = useMutation({
@@ -138,8 +159,10 @@ function EmployeesBody() {
       }),
     onSuccess: (code) => {
       setLastCode(code.code);
-      setFlash("New enrollment code generated.");
+      setFlash({ tone: "success", message: "New enrollment code generated." });
     },
+    onError: (err) =>
+      setFlash({ tone: "error", message: friendlyError(err, "Could not create an enrollment code.") }),
   });
 
   const alertMutation = useMutation({
@@ -167,12 +190,14 @@ function EmployeesBody() {
       ),
     onMutate: ({ id }) => setAlertTarget(id),
     onSuccess: (res) => {
-      setFlash(
-        `Notification sent: ${res.title} (${res.delivered} device${res.delivered === 1 ? "" : "s"}).`,
-      );
+      setConfirm(null);
+      setFlash({
+        tone: "success",
+        message: `Notification sent: ${res.title} (${res.delivered} device${res.delivered === 1 ? "" : "s"}).`,
+      });
     },
     onError: (err) =>
-      setFlash(err instanceof ApiError ? err.message : "Notification failed"),
+      setFlash({ tone: "error", message: friendlyError(err, "Could not send that notification.") }),
     onSettled: () => setAlertTarget(null),
   });
 
@@ -183,7 +208,7 @@ function EmployeesBody() {
     if (!title.trim()) return;
     const message = window.prompt("Notification message", "") ?? "";
     if (!message.trim()) {
-      setFlash("Message is required for a normal notification.");
+      setFlash({ tone: "info", message: "Message is required for a normal notification." });
       return;
     }
     alertMutation.mutate({
@@ -194,6 +219,11 @@ function EmployeesBody() {
     });
   }
 
+  const confirmPending =
+    (confirm?.kind === "urgent" && alertMutation.isPending) ||
+    (confirm?.kind === "deactivate" && deactivateMutation.isPending) ||
+    (confirm?.kind === "delete-face" && deleteFaceMutation.isPending);
+
   return (
     <div className="space-y-6">
       <div>
@@ -203,6 +233,8 @@ function EmployeesBody() {
         </p>
       </div>
 
+      {flash ? <Notice tone={flash.tone}>{flash.message}</Notice> : null}
+
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
         <Card>
           <CardHeader>
@@ -211,33 +243,60 @@ function EmployeesBody() {
           <CardContent>
             <form
               className="space-y-3"
+              noValidate
               onSubmit={form.handleSubmit((v) => createMutation.mutate(v))}
             >
               <div className="space-y-2">
                 <Label htmlFor="full_name">Full name</Label>
-                <Input id="full_name" {...form.register("full_name")} />
+                <Input
+                  id="full_name"
+                  aria-invalid={Boolean(errors.full_name)}
+                  {...form.register("full_name")}
+                />
+                <FieldError message={errors.full_name?.message} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" {...form.register("email")} />
+                <Input
+                  id="email"
+                  type="email"
+                  aria-invalid={Boolean(errors.email)}
+                  {...form.register("email")}
+                />
+                <FieldError message={errors.email?.message} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="employee_code">Employee code</Label>
-                <Input id="employee_code" {...form.register("employee_code")} />
+                <Label htmlFor="employee_code">Staff code</Label>
+                <Input
+                  id="employee_code"
+                  aria-invalid={Boolean(errors.employee_code)}
+                  {...form.register("employee_code")}
+                />
+                <FieldError message={errors.employee_code?.message} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" {...form.register("phone")} />
+                <Input
+                  id="phone"
+                  aria-invalid={Boolean(errors.phone)}
+                  {...form.register("phone")}
+                />
+                <FieldError message={errors.phone?.message} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="job_title">Job title</Label>
-                <Input id="job_title" {...form.register("job_title")} />
+                <Input
+                  id="job_title"
+                  aria-invalid={Boolean(errors.job_title)}
+                  {...form.register("job_title")}
+                />
+                <FieldError message={errors.job_title?.message} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="primary_location_id">Primary site</Label>
                 <select
                   id="primary_location_id"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-base md:text-sm"
                   {...form.register("primary_location_id")}
                 >
                   <option value="">Unassigned</option>
@@ -252,7 +311,7 @@ function EmployeesBody() {
                 <Label htmlFor="shift_id">Shift</Label>
                 <select
                   id="shift_id"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-base md:text-sm"
                   {...form.register("shift_id")}
                 >
                   <option value="">None</option>
@@ -267,9 +326,8 @@ function EmployeesBody() {
                 {createMutation.isPending ? "Creating…" : "Create + enrollment code"}
               </Button>
             </form>
-            {flash ? <p className="mt-3 text-sm text-muted-foreground">{flash}</p> : null}
             {lastCode ? (
-              <p className="mt-2 rounded-md border border-border bg-muted/50 p-3 font-mono text-lg tracking-widest">
+              <p className="mt-3 rounded-md border border-border bg-muted/50 p-3 font-mono text-lg tracking-widest">
                 {lastCode}
               </p>
             ) : null}
@@ -281,118 +339,172 @@ function EmployeesBody() {
             <CardTitle className="text-base">Directory</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="text-muted-foreground">
-                <tr className="border-b border-border">
-                  <th className="py-2 pr-3 font-medium">Code</th>
-                  <th className="py-2 pr-3 font-medium">Name</th>
-                  <th className="py-2 pr-3 font-medium">Email</th>
-                  <th className="py-2 pr-3 font-medium">Status</th>
-                  <th className="py-2 pr-3 font-medium">Alerts</th>
-                  <th className="py-2 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.map((e) => (
-                  <tr key={e.id} className="border-b border-border/70">
-                    <td className="py-2 pr-3 font-mono text-xs">{e.employee_code}</td>
-                    <td className="py-2 pr-3">{e.full_name}</td>
-                    <td className="py-2 pr-3">{e.email}</td>
-                    <td className="py-2 pr-3">
-                      <Badge variant={e.is_active ? "success" : "secondary"}>
-                        {e.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </td>
-                    <td className="py-2 pr-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={
-                            !e.is_active ||
-                            (alertMutation.isPending && alertTarget === e.id)
-                          }
-                          onClick={() => sendCustomMessage(e.id, e.full_name)}
-                        >
-                          Message
-                        </Button>
-                        {ALERT_BUTTONS.map((alert) => (
+            {employeesQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading staff…</p>
+            ) : employeesQuery.isError ? (
+              <div className="space-y-3">
+                <Notice tone="error">
+                  {friendlyError(employeesQuery.error, "Could not load staff.")}
+                </Notice>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => employeesQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : employeesQuery.isSuccess && employees.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No staff yet. Add someone to get started.
+              </p>
+            ) : (
+              <table className="w-full min-w-[960px] text-left text-sm">
+                <thead className="text-muted-foreground">
+                  <tr className="border-b border-border">
+                    <th className="py-2 pr-3 font-medium">Code</th>
+                    <th className="py-2 pr-3 font-medium">Name</th>
+                    <th className="py-2 pr-3 font-medium">Email</th>
+                    <th className="py-2 pr-3 font-medium">Status</th>
+                    <th className="py-2 pr-3 font-medium">Alerts</th>
+                    <th className="py-2 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employees.map((e) => (
+                    <tr key={e.id} className="border-b border-border/70">
+                      <td className="py-2 pr-3 font-mono text-xs">{e.employee_code}</td>
+                      <td className="py-2 pr-3">{e.full_name}</td>
+                      <td className="py-2 pr-3">{e.email}</td>
+                      <td className="py-2 pr-3">
+                        <Badge variant={e.is_active ? "success" : "secondary"}>
+                          {humanStatus(e.is_active ? "active" : "inactive")}
+                        </Badge>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="flex flex-wrap gap-1.5">
                           <Button
-                            key={alert.type}
                             type="button"
                             size="sm"
-                            variant={alert.type === "urgent" ? "danger" : "secondary"}
+                            variant="outline"
                             disabled={
                               !e.is_active ||
                               (alertMutation.isPending && alertTarget === e.id)
                             }
-                            onClick={() =>
-                              alertMutation.mutate({
-                                id: e.id,
-                                alertType: alert.type,
-                              })
-                            }
+                            onClick={() => sendCustomMessage(e.id, e.full_name)}
                           >
-                            {alert.label}
+                            Message
                           </Button>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-2">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => codeMutation.mutate(e.id)}
-                        >
-                          Enrollment code
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={deleteFaceMutation.isPending}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `Delete face template for ${e.full_name}?`,
-                              )
-                            ) {
-                              deleteFaceMutation.mutate(e.id);
-                            }
-                          }}
-                        >
-                          Delete face
-                        </Button>
-                        {e.is_active ? (
+                          {ALERT_BUTTONS.map((alert) => (
+                            <Button
+                              key={alert.type}
+                              type="button"
+                              size="sm"
+                              variant={alert.type === "urgent" ? "danger" : "secondary"}
+                              disabled={
+                                !e.is_active ||
+                                (alertMutation.isPending && alertTarget === e.id)
+                              }
+                              onClick={() => {
+                                if (alert.type === "urgent") {
+                                  setConfirm({ kind: "urgent", id: e.id, name: e.full_name });
+                                  return;
+                                }
+                                alertMutation.mutate({
+                                  id: e.id,
+                                  alertType: alert.type,
+                                });
+                              }}
+                            >
+                              {alert.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-2">
+                        <div className="flex flex-wrap gap-2">
                           <Button
                             type="button"
                             size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `Delete employee ${e.full_name}? They will be deactivated.`,
-                                )
-                              ) {
-                                deactivateMutation.mutate(e.id);
-                              }
-                            }}
+                            variant="outline"
+                            onClick={() => codeMutation.mutate(e.id)}
                           >
-                            Delete
+                            Enrollment code
                           </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={deleteFaceMutation.isPending}
+                            onClick={() =>
+                              setConfirm({ kind: "delete-face", id: e.id, name: e.full_name })
+                            }
+                          >
+                            Remove face
+                          </Button>
+                          {e.is_active ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                setConfirm({ kind: "deactivate", id: e.id, name: e.full_name })
+                              }
+                            >
+                              Deactivate
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={confirm?.kind === "urgent"}
+        title="Send urgent alert?"
+        body={`This sends an urgent notification to ${confirm?.name ?? "this person"}.`}
+        confirmLabel="Send urgent"
+        danger
+        pending={confirmPending}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm?.kind !== "urgent") return;
+          alertMutation.mutate({ id: confirm.id, alertType: "urgent" });
+        }}
+      />
+      <ConfirmDialog
+        open={confirm?.kind === "deactivate"}
+        title="Deactivate this person?"
+        body={`${confirm?.name ?? "This person"} will no longer be able to check in.`}
+        confirmLabel="Deactivate"
+        danger
+        pending={confirmPending}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm?.kind !== "deactivate") return;
+          deactivateMutation.mutate(confirm.id);
+        }}
+      />
+      <ConfirmDialog
+        open={confirm?.kind === "delete-face"}
+        title="Remove face enrollment?"
+        body={`${confirm?.name ?? "This person"} will need to enroll their face again.`}
+        confirmLabel="Remove"
+        danger
+        pending={confirmPending}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm?.kind !== "delete-face") return;
+          deleteFaceMutation.mutate(confirm.id);
+        }}
+      />
     </div>
   );
 }

@@ -1,12 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AuthGate } from "@/components/auth-gate";
 import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ApiError, apiFetch } from "@/lib/api";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Notice } from "@/components/ui/notice";
+import { apiFetch } from "@/lib/api";
+import { friendlyError, humanStatus } from "@/lib/friendly-error";
 
 type DailyEmployee = {
   employee_id: string;
@@ -61,29 +65,38 @@ function formatTime(iso: string | null) {
 
 function DailyAttendanceBody() {
   const qc = useQueryClient();
-  const { data, isLoading, error, dataUpdatedAt } = useQuery({
+  const [removeTarget, setRemoveTarget] = useState<DailyEmployee | null>(null);
+  const dailyQuery = useQuery({
     queryKey: ["daily-attendance"],
     queryFn: () => apiFetch<DailyAttendance>("/api/v1/admin/daily-attendance"),
     refetchInterval: 30_000,
   });
+  const data = dailyQuery.data;
+  const dataUpdatedAt = dailyQuery.dataUpdatedAt;
 
   const remove = useMutation({
     mutationFn: (recordId: string) =>
       apiFetch(`/api/v1/admin/daily-attendance/${recordId}`, { method: "DELETE" }),
     onSuccess: async () => {
+      setRemoveTarget(null);
       await qc.invalidateQueries({ queryKey: ["daily-attendance"] });
       await qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 
-  if (isLoading) {
+  if (dailyQuery.isLoading) {
     return <p className="text-sm text-muted-foreground">Loading today’s attendance…</p>;
   }
-  if (error || !data) {
+  if (dailyQuery.isError || !data) {
     return (
-      <p className="text-sm text-destructive" role="alert">
-        Could not load daily attendance.
-      </p>
+      <div className="space-y-3">
+        <Notice tone="error">
+          {friendlyError(dailyQuery.error, "Could not load daily attendance.")}
+        </Notice>
+        <Button type="button" variant="outline" size="sm" onClick={() => dailyQuery.refetch()}>
+          Retry
+        </Button>
+      </div>
     );
   }
 
@@ -100,11 +113,9 @@ function DailyAttendanceBody() {
       </div>
 
       {remove.isError ? (
-        <p className="text-sm text-destructive" role="alert">
-          {remove.error instanceof ApiError
-            ? remove.error.message
-            : "Could not delete attendance record."}
-        </p>
+        <Notice tone="error">
+          {friendlyError(remove.error, "Could not remove this check-in.")}
+        </Notice>
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -169,7 +180,7 @@ function DailyAttendanceBody() {
                   {loc.name}
                   {loc.slug ? (
                     <span className="ml-2 text-sm font-normal text-muted-foreground">
-                      /{loc.slug}
+                      {loc.slug}
                     </span>
                   ) : null}
                 </CardTitle>
@@ -200,6 +211,7 @@ function DailyAttendanceBody() {
                 <tbody>
                   {loc.employees.map((emp) => {
                     const badge = presenceBadge(emp.presence_status);
+                    const statusLabel = humanStatus(emp.status);
                     return (
                       <tr key={emp.record_id} className="border-b border-border/70">
                         <td className="py-2.5 pr-3">
@@ -207,7 +219,7 @@ function DailyAttendanceBody() {
                           <div className="text-xs text-muted-foreground">
                             {emp.employee_code}
                             {emp.is_late ? " · late" : ""}
-                            {emp.status !== "open" ? ` · ${emp.status}` : ""}
+                            {emp.status !== "open" ? ` · ${statusLabel}` : ""}
                           </div>
                         </td>
                         <td className="py-2.5 pr-3">{formatTime(emp.check_in_at)}</td>
@@ -244,17 +256,9 @@ function DailyAttendanceBody() {
                             size="sm"
                             variant="outline"
                             disabled={remove.isPending}
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `Delete attendance for ${emp.full_name}? They can check in again today.`,
-                                )
-                              ) {
-                                remove.mutate(emp.record_id);
-                              }
-                            }}
+                            onClick={() => setRemoveTarget(emp)}
                           >
-                            Delete
+                            Remove check-in
                           </Button>
                         </td>
                       </tr>
@@ -266,6 +270,19 @@ function DailyAttendanceBody() {
           </Card>
         ))
       )}
+
+      <ConfirmDialog
+        open={Boolean(removeTarget)}
+        title="Remove this check-in?"
+        body={`${removeTarget?.full_name ?? "This person"} can check in again today.`}
+        confirmLabel="Remove check-in"
+        danger
+        pending={remove.isPending}
+        onCancel={() => setRemoveTarget(null)}
+        onConfirm={() => {
+          if (removeTarget) remove.mutate(removeTarget.record_id);
+        }}
+      />
     </div>
   );
 }

@@ -40,7 +40,7 @@ const config: Config = {
           foreground: "hsl(var(--accent-foreground))",
         },
         brand: {
-          red: "hsl(0 100% 59%)",
+          red: "hsl(0 84% 42%)",
           gold: "hsl(var(--brand-gold))",
           black: "hsl(var(--brand-black))",
         },
