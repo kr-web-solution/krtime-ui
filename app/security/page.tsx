@@ -30,6 +30,10 @@ function eventLabel(type: string): string {
       return "Device integrity warning";
     case "root_detected":
       return "Compromised device signal";
+    case "missed_checkin":
+      return "Missed check-in";
+    case "late_checkin":
+      return "Late check-in";
     default:
       return "Security alert";
   }
@@ -56,7 +60,7 @@ function SecurityBody() {
       <div>
         <h1 className="font-display text-3xl tracking-tight">Security events</h1>
         <p className="text-sm text-muted-foreground">
-          Alerts when someone leaves the site while checked in, or when a device looks unsafe.
+          Late or missed check-ins, site exits while checked in, and unsafe device signals.
         </p>
       </div>
 

@@ -104,10 +104,12 @@ function ThemeToggle({
 function SideNav({
   pathname,
   exitCue,
+  checkInCue,
   onNavigate,
 }: {
   pathname: string | null;
   exitCue: number;
+  checkInCue: number;
   onNavigate?: () => void;
 }) {
   return (
@@ -121,7 +123,12 @@ function SideNav({
             {group.items.map((item) => {
               const active = pathActive(pathname, item.href);
               const Icon = item.icon;
-              const showBadge = item.href === "/security/" && exitCue > 0;
+              const badge =
+                item.href === "/security/"
+                  ? exitCue + checkInCue
+                  : item.href === "/dashboard/"
+                    ? checkInCue
+                    : 0;
               return (
                 <Link
                   key={item.href}
@@ -137,9 +144,9 @@ function SideNav({
                 >
                   <Icon className="h-4 w-4 shrink-0" aria-hidden />
                   <span className="flex-1">{item.label}</span>
-                  {showBadge ? (
+                  {badge > 0 ? (
                     <span className="rounded-full bg-secondary/30 px-1.5 py-0.5 text-[10px] font-semibold text-secondary-foreground">
-                      {exitCue}
+                      {badge}
                     </span>
                   ) : null}
                 </Link>
@@ -168,6 +175,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     staleTime: 30_000,
   });
   const exitCue = dash?.geofence_exits_today ?? 0;
+  const checkInCue = dash?.check_in_alerts_count ?? 0;
 
   useEffect(() => {
     setMobileOpen(false);
@@ -221,7 +229,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Desktop / tablet: always-on vertical sidebar */}
         <aside className="sticky top-0 z-20 hidden h-screen w-64 shrink-0 flex-col border-r border-border/70 bg-card/90 p-4 backdrop-blur md:flex">
           {brand}
-          <SideNav pathname={pathname} exitCue={exitCue} />
+          <SideNav pathname={pathname} exitCue={exitCue} checkInCue={checkInCue} />
           {footer}
         </aside>
 
@@ -264,6 +272,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <SideNav
                 pathname={pathname}
                 exitCue={exitCue}
+                checkInCue={checkInCue}
                 onNavigate={() => setMobileOpen(false)}
               />
               {footer}

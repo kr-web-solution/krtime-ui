@@ -81,6 +81,9 @@ function DashboardBody() {
     );
   }
 
+  const checkInAlerts = data.check_in_alerts ?? [];
+  const checkInAlertCount = data.check_in_alerts_count ?? checkInAlerts.length;
+
   return (
     <div className="space-y-6">
       <div>
@@ -89,6 +92,57 @@ function DashboardBody() {
           {data.work_date} · {data.timezone}
         </p>
       </div>
+
+      {checkInAlertCount > 0 ? (
+        <Card className="border-primary/35 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-primary">
+              Check-in alerts ({checkInAlertCount})
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              People who checked in late or have not checked in after their shift start.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {checkInAlerts.map((alert) => (
+              <div
+                key={`${alert.kind}-${alert.employee_id}`}
+                className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/80 bg-background/70 px-3 py-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium">{alert.full_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {alert.shift_name}
+                    {alert.kind === "late" ? " · Late check-in" : " · Not checked in"}
+                    {alert.minutes_over > 0 ? ` · ${alert.minutes_over} min late` : ""}
+                  </p>
+                </div>
+                <span
+                  className={
+                    alert.kind === "missed"
+                      ? "rounded-md bg-primary/15 px-2 py-1 text-xs font-semibold text-primary"
+                      : "rounded-md bg-secondary/40 px-2 py-1 text-xs font-semibold text-secondary-foreground"
+                  }
+                >
+                  {alert.kind === "missed" ? "Missed" : "Late"}
+                </span>
+              </div>
+            ))}
+            <p className="pt-1 text-xs text-muted-foreground">
+              Also listed under{" "}
+              <Link href="/security/" className="font-medium underline underline-offset-2">
+                Security
+              </Link>{" "}
+              and{" "}
+              <Link href="/employees/" className="font-medium underline underline-offset-2">
+                Employees
+              </Link>{" "}
+              (send a Check in nudge).
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi label="Total employees" value={data.total_employees} />
         <Kpi label="Present" value={data.present} />
@@ -99,6 +153,7 @@ function DashboardBody() {
         <Kpi label="Rejected attempts" value={data.rejected_attempts} />
         <Kpi label="Suspicious events" value={data.suspicious_events} />
         <Kpi label="Geofence exits today" value={data.geofence_exits_today} />
+        <Kpi label="Check-in alerts" value={checkInAlertCount} />
       </div>
       {data.geofence_exits_today > 0 ? (
         <Notice tone="info">

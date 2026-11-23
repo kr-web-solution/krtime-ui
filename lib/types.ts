@@ -86,6 +86,18 @@ export type SitePresence = {
   present: number;
 };
 
+export type CheckInAlert = {
+  employee_id: string;
+  full_name: string;
+  employee_code: string;
+  kind: "late" | "missed" | string;
+  shift_name: string;
+  scheduled_start: string;
+  check_in_at: string | null;
+  minutes_over: number;
+  message: string;
+};
+
 export type Dashboard = {
   work_date: string;
   timezone: string;
@@ -100,8 +112,10 @@ export type Dashboard = {
   pending_review: number;
   suspicious_events: number;
   geofence_exits_today: number;
+  check_in_alerts_count: number;
   devices_needing_attention: number;
   by_site: SitePresence[];
+  check_in_alerts: CheckInAlert[];
 };
 
 export type QrDisplayLink = {
